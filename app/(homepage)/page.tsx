@@ -4,7 +4,6 @@
 import React, { useState } from 'react';
 import { useChat } from '@/context/chat-context';
 import { sendMessage } from '@/lib/coze-client';
-import { ChatList } from '@/components/sidebar/chat-list';
 
 export default function HomePage() {
   const { chatSessions, activeSessionId, addMessage } = useChat();
@@ -17,7 +16,7 @@ export default function HomePage() {
     addMessage(activeSessionId, { role: 'user', content: userInput, timestamp: Date.now() });
 
     // 请求 LLM 回复
-    const botResponses = await sendMessage('your_bot_id', userInput);
+    const botResponses = await sendMessage('7473839565292863514', userInput);
     botResponses.forEach((response) => {
       addMessage(activeSessionId, { role: 'assistant', content: response.content, timestamp: Date.now() });
     });
@@ -30,7 +29,7 @@ export default function HomePage() {
       <h1 className="text-2xl font-bold mb-4">💬 Chat Interface</h1>
 
       {/* 聊天消息列表 */}
-      <div className="mb-4 h-[calc(100vh-200px)] overflow-y-auto">
+      <div className="mb-4 h-[calc(100vh-150px)] overflow-y-auto overflow-x-hidden">
         {activeSessionId && (
           chatSessions
             .find((session) => session.id === activeSessionId)
@@ -39,7 +38,7 @@ export default function HomePage() {
                 key={index}
                 className={`mb-2 p-2 rounded ${message.role === 'user' ? 'bg-blue-500' : 'bg-gray-700'} text-white`}
               >
-                <p>{message.content}</p>
+                <p className="break-words">{message.content}</p>
                 <span className="text-xs text-gray-300">{new Date(message.timestamp).toLocaleTimeString()}</span>
               </div>
             ))

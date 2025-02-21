@@ -8,11 +8,11 @@ interface ChatLayoutProps {
 
 export default function ChatLayout({ children }: ChatLayoutProps) {
   return (
-    <ChatProvider>
-      <main className="flex h-full text-white">
+    <main className="flex h-full text-white overflow-hidden">
+      <ChatProvider>
         <Sidebar />
-        <div className="h-full w-full">{children}</div>
-      </main>
-    </ChatProvider>
+        <div className="h-full w-full overflow-hidden">{children}</div>
+      </ChatProvider>
+    </main>
   );
 }

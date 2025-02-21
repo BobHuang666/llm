@@ -1,7 +1,6 @@
-// context/chat-context.tsx
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -28,6 +27,11 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  // Automatically create a new session on component mount
+  useEffect(() => {
+    createNewSession();
+  }, []);
 
   const createNewSession = () => {
     const newSession: ChatSession = {
