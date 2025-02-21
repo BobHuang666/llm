@@ -1,4 +1,6 @@
+// app/(homepage)/layout.tsx
 import { Sidebar } from "@/components/sidebar";
+import { ChatProvider } from "@/context/chat-context";
 
 interface ChatLayoutProps {
   children: React.ReactNode;
@@ -6,11 +8,11 @@ interface ChatLayoutProps {
 
 export default function ChatLayout({ children }: ChatLayoutProps) {
   return (
-    <main className="flex h-full text-white">
-      <Sidebar />
-      <div className="h-full w-full">
-        {children}
-      </div>
-    </main>
-  )
+    <ChatProvider>
+      <main className="flex h-full text-white">
+        <Sidebar />
+        <div className="h-full w-full">{children}</div>
+      </main>
+    </ChatProvider>
+  );
 }
