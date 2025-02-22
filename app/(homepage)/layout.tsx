@@ -11,7 +11,7 @@ export default function ChatLayout({ children }: ChatLayoutProps) {
     <main className="flex h-full text-white overflow-hidden">
       <ChatProvider>
         <Sidebar />
-        <div className="h-full w-full overflow-hidden">{children}</div>
+        <div className="h-full w-full overflow-hidden" >{children}</div>
       </ChatProvider>
     </main>
   );
