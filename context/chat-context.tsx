@@ -1,10 +1,18 @@
+// context/chat-context.tsx
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
 
+interface FileContent {
+  type: 'file';
+  url: string;
+  name: string;
+  mimeType: string;
+}
+
 interface Message {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | FileContent;
   timestamp: number;
 }
 
