@@ -2,13 +2,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-
-interface FileContent {
-  type: 'file';
-  url: string;
-  name: string;
-  mimeType: string;
-}
+import { FileContent } from '@/lib/types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -60,6 +54,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       )
     );
   };
+
+  // 添加自动保存到localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('chatSessions');
+    if (saved) {
+      setChatSessions(JSON.parse(saved));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('chatSessions', JSON.stringify(chatSessions));
+  }, [chatSessions]);
 
   return (
     <ChatContext.Provider value={{ chatSessions, activeSessionId, createNewSession, addMessage, setActiveSessionId }}>

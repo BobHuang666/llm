@@ -1,15 +1,17 @@
 // app/(homepage)/page.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useChat } from '@/context/chat-context';
-import { streamMessage } from '@/lib/coze-client';
+import { streamWorkflow, uploadFile, retrieveFileDetails, verifyPermissions } from '@/lib/coze-client';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { solarizedlight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { FileUpload } from '@/components/file-upload';
 import { FilePreview } from '@/components/file-preview';
-import { ImageIcon, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { FileContent } from '@/lib/types';
+
 
 export default function HomePage() {
   const { chatSessions, activeSessionId, addMessage } = useChat();
@@ -17,28 +19,20 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [streamContent, setStreamContent] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [permissionStatus, setPermissionStatus] = useState<string>('checking...');
 
-  const handleFileUpload = useCallback(async (file: File) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '上传失败');
+  useEffect(() => {
+    const checkPermissions = async () => {
+      try {
+        await verifyPermissions();
+        setPermissionStatus('✅ 权限状态正常');
+      } catch (error: any) {
+        setPermissionStatus(`❌ 权限错误: ${error.message}`);
+        console.error('权限验证失败:', error);
       }
+    };
 
-      const { url } = await response.json();
-      return url;
-    } catch (error) {
-      console.error('上传错误:', error);
-      throw error; // 抛出错误以便外层捕获
-    }
+    checkPermissions();
   }, []);
 
   const handleSendMessage = async () => {
@@ -47,49 +41,95 @@ export default function HomePage() {
     try {
       setIsLoading(true);
 
-      // Upload files
-      const fileContents = await Promise.all(
-        attachments.map(async (file) => ({
-          type: 'file' as const,
-          url: await handleFileUpload(file),
-          name: file.name,
-          mimeType: file.type,
-        }))
+      // 处理文件上传和验证
+      const fileDetails = await Promise.all(
+        attachments.map(async (file) => {
+          try {
+            const fileId = await uploadFile(file);
+            const detail = await retrieveFileDetails(fileId);
+
+            // 验证关键字段
+            if (!detail.data?.file_name || !detail.data.id) {
+              throw new Error('文件信息不完整');
+            }
+
+            return {
+              fileId,
+              detail,
+              paramKey: file.type.startsWith('image/') ? 'image_input' : 'file_input',
+              originalFile: file
+            };
+          } catch (error) {
+            console.error('文件处理失败:', file.name, error);
+            throw new Error(`文件 ${file.name} 处理失败: ${error.message}`);
+          }
+        })
       );
 
-      // Add user message
-      if (userInput.trim() || fileContents.length > 0) {
+      // 构建工作流参数
+      const parameters = fileDetails.reduce((acc, item) => {
+        acc[item.paramKey] = JSON.stringify({ file_id: item.fileId });
+        return acc;
+      }, {} as Record<string, any>);
+
+      parameters.text_input = userInput;
+
+      // 添加用户消息（带验证）
+      fileDetails.forEach(({ detail, originalFile }) => {
         addMessage(activeSessionId, {
           role: 'user',
-          content: fileContents.length > 0 ? fileContents[0] : userInput,
+          content: {
+            type: 'file',
+            url: URL.createObjectURL(originalFile),
+            name: detail.data.file_name, // 确保使用正确的字段
+            mimeType: originalFile.type,
+            meta: {
+              id: detail.data.id,
+              size: detail.data.bytes,
+              uploadedAt: detail.data.created_at
+            }
+          },
           timestamp: Date.now(),
         });
-      }
-
-      // Stream assistant response
-      let finalContent = '';
-      await streamMessage('7473839565292863514', userInput, (chunk) => {
-        setStreamContent((prev) => prev + chunk);
-        finalContent += chunk;
       });
 
+
+      // 执行工作流
+      let finalContent = '';
+      await streamWorkflow(
+        process.env.NEXT_PUBLIC_WORKFLOW_ID!, // 从环境变量获取
+        parameters,
+        (chunk) => {
+          setStreamContent(prev => prev + chunk);
+          finalContent += chunk;
+        },
+        (error) => {
+          throw new Error(error);
+        }
+      );
+
+      // 添加助手响应
       addMessage(activeSessionId, {
         role: 'assistant',
         content: finalContent,
         timestamp: Date.now(),
       });
-
     } catch (error) {
-      console.error('Error:', error);
+      // 增强错误处理
+      const errorMessage = error.message.includes('file_name')
+        ? '文件处理失败：服务器返回格式异常'
+        : error.message;
+
       addMessage(activeSessionId, {
         role: 'assistant',
-        content: '消息发送失败，请重试',
+        content: errorMessage,
         timestamp: Date.now(),
       });
     } finally {
       setUserInput('');
       setAttachments([]);
       setIsLoading(false);
+      setStreamContent('');
     }
   };
 
@@ -111,10 +151,10 @@ export default function HomePage() {
                   >
                     {codeString}
                   </SyntaxHighlighter>
+                  <CopyButton code={codeString} />
                 </div>
               );
             },
-            // ...其他Markdown组件...
             h1: ({ children }) => <h1 className="text-3xl font-bold mt-4 mb-2">{children}</h1>,
             h2: ({ children }) => <h2 className="text-2xl font-semibold mt-4 mb-2">{children}</h2>,
             h3: ({ children }) => <h3 className="text-xl font-medium mt-4 mb-2">{children}</h3>,
@@ -133,9 +173,20 @@ export default function HomePage() {
 
   return (
     <div className="p-4 bg-neutral-800 h-full w-full">
+
+      {/* 添加权限状态提示 */}
+      <div className="mb-4 p-3 bg-gray-700 rounded-lg">
+        <div className="text-sm flex items-center gap-2">
+          <span>系统状态：</span>
+          <span className={`font-medium ${permissionStatus.includes('✅') ? 'text-green-400' : 'text-red-400'
+            }`}>
+            {permissionStatus}
+          </span>
+        </div>
+      </div>
+
       <div className="p-4 bg-neutral-800 h-full max-w-[1000px] mx-auto">
-        {/* 消息列表 */}
-        <div className="mb-4 h-[calc(100vh-180px)] overflow-y-auto space-y-4">
+        <div className="mb-4 h-[calc(100vh-520px)] overflow-y-auto space-y-4">
           {activeSessionId && chatSessions
             .find((session) => session.id === activeSessionId)
             ?.messages.map((message, index) => (
@@ -143,8 +194,7 @@ export default function HomePage() {
                 key={index}
                 className={`p-4 rounded-lg ${message.role === 'user'
                   ? 'bg-blue-600 ml-auto max-w-[80%]'
-                  : 'bg-gray-700 max-w-[90%]'
-                  }`}
+                  : 'bg-gray-700 max-w-[90%]'}`}
               >
                 {renderMessageContent(message.content)}
                 <div className="mt-2 text-xs text-gray-300">
@@ -153,7 +203,6 @@ export default function HomePage() {
               </div>
             ))}
 
-          {/* 流式响应 */}
           {isLoading && (
             <div className="p-4 rounded-lg bg-gray-700 max-w-[90%]">
               <div className="flex items-center gap-2 text-gray-400">
@@ -162,19 +211,26 @@ export default function HomePage() {
               </div>
               {streamContent && (
                 <div className="mt-2">
-                  <ReactMarkdown>
-                    {streamContent}
-                  </ReactMarkdown>
+                  <ReactMarkdown>{streamContent}</ReactMarkdown>
+                </div>
+              )}
+              {/* 添加错误提示区域 */}
+              {permissionStatus.startsWith('❌') && (
+                <div className="mt-2 text-red-400 text-sm">
+                  操作被拒绝，请检查：
+                  <ul className="list-disc pl-4 mt-1">
+                    <li>访问令牌是否已过期</li>
+                    <li>是否具有文件操作权限</li>
+                    <li>工作流ID是否正确</li>
+                  </ul>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* 输入区域 */}
         <div className="flex gap-2 items-stretch">
           <div className="flex flex-col gap-2 flex-1">
-            {/* 附件预览 */}
             {attachments.length > 0 && (
               <div className="flex gap-2 flex-wrap">
                 {attachments.map((file, index) => (
@@ -193,7 +249,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* 输入框 */}
             <div className="flex gap-2">
               <FileUpload
                 onUpload={(file) => {
@@ -226,12 +281,19 @@ export default function HomePage() {
   );
 }
 
-const CopyButton = ({ code, handleCopy }: { code: string; handleCopy: (code: string, setCopyText: React.Dispatch<React.SetStateAction<string>>) => void }) => {
+const CopyButton = ({ code }: { code: string }) => {
   const [copyText, setCopyText] = useState('Copy');
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopyText('Copied!');
+      setTimeout(() => setCopyText('Copy'), 1500); // Reset button text after a short delay
+    });
+  };
 
   return (
     <button
-      onClick={() => handleCopy(code, setCopyText)}
+      onClick={handleCopy}
       className="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded w-[70px]"
     >
       {copyText}
