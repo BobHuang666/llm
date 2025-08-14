@@ -24,7 +24,6 @@ export const streamMessage = async (botId: string, message: string, onChunk: (ch
 
 export const uploadFile = async (file: File): Promise<string> => {
   try {
-
     const formData = new FormData();
     formData.append("file", file);
 
@@ -43,20 +42,23 @@ export const uploadFile = async (file: File): Promise<string> => {
 
     const { file_id } = await response.json();
     return file_id;
-  }
-  catch (error) {
+  } catch (error: unknown) {
+    let errorMsg = '未知错误';
+    if (error instanceof Error) {
+      errorMsg = error.message;
+    }
     console.error('上传失败详情:', {
       fileName: file.name,
       size: file.size,
       type: file.type,
-      error: error.message
+      error: errorMsg
     });
-    throw new Error(`文件上传失败: ${error.message}`);
-  };
+    throw new Error(`文件上传失败: ${errorMsg}`);
+  }
 }
 export const streamWorkflow = async (
   workflowId: string,
-  parameters: Record<string, any>,
+  parameters: Record<string, unknown>,
   onMessage: (content: string) => void,
   onError?: (error: string) => void
 ): Promise<void> => {
@@ -92,6 +94,16 @@ export const streamWorkflow = async (
       const events = buffer.split(/\n\n/);
       buffer = events.pop() || '';
 
+      interface WorkflowStreamEvent {
+        id: number;
+        event: 'Message' | 'Error' | 'Interrupt' | 'Done' | string;
+        data: {
+          content?: string;
+          error_message?: string;
+          [key: string]: unknown;
+        } | null;
+      }
+
       for (const event of events) {
         const lines = event.split(/\n/);
         const eventData: WorkflowStreamEvent = { id: -1, event: 'Done', data: null };
@@ -100,7 +112,7 @@ export const streamWorkflow = async (
           if (line.startsWith('id:')) {
             eventData.id = parseInt(line.split(': ')[1]);
           } else if (line.startsWith('event:')) {
-            eventData.event = line.split(': ')[1] as any;
+            eventData.event = line.split(': ')[1] as WorkflowStreamEvent['event'];
           } else if (line.startsWith('data:')) {
             try {
               eventData.data = JSON.parse(line.slice(5));
@@ -147,7 +159,7 @@ export const verifyPermissions = async () => {
         Authorization: `Bearer ${process.env.NEXT_PUBLIC_COZE_TOKEN}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ workflow_id: !process.env.NEXT_PUBLIC_BOT})
+      body: JSON.stringify({ workflow_id: !process.env.NEXT_PUBLIC_BOT })
     });
 
   } catch (error) {
@@ -165,14 +177,29 @@ interface CozeError extends Error {
   logId?: string;
 }
 
-export const handleCozeError = (error: any): never => {
-  const customError: CozeError = new Error(error.message || '未知错误');
+export const handleCozeError = (error: unknown): never => {
+  let customError: CozeError;
+  if (error instanceof Error) {
+    customError = error as CozeError;
+  } else {
+    customError = new Error('未知错误');
+  }
 
-  if (error.response) {
-    const { code, msg, detail } = error.response.data;
-    customError.message = `${code} ${msg} (logid: ${detail?.logid})`;
-    customError.code = code;
-    customError.logId = detail?.logid;
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: unknown }).response === 'object' &&
+    (error as { response?: { data?: unknown } }).response !== null &&
+    'data' in (error as { response: { data?: unknown } }).response!
+  ) {
+    const response = (error as { response: { data?: { code?: number; msg?: string; detail?: { logid?: string } } } }).response;
+    if (response && response.data) {
+      const { code, msg, detail } = response.data;
+      customError.message = `${code} ${msg} (logid: ${detail?.logid})`;
+      customError.code = code;
+      customError.logId = detail?.logid;
+    }
   }
 
   throw customError;
@@ -199,10 +226,14 @@ export const retrieveFileDetails = async (fileId: string) => {
     }
 
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
+    let errorMsg = '未知错误';
+    if (error instanceof Error) {
+      errorMsg = error.message;
+    }
     console.error('文件详情获取失败:', {
       fileId,
-      error: error.message
+      error: errorMsg
     });
     throw error;
   }

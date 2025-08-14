@@ -34,7 +34,11 @@ export const ChatList = () => {
             >
               <div className="flex justify-between items-center">
                 {/* 会话标题，溢出时省略 */}
-                <span className="overflow-hidden text-ellipsis whitespace-nowrap">{session.messages[0]?.content || '新会话'}</span>
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                  {typeof session.messages[0]?.content === 'string'
+                    ? session.messages[0]?.content
+                    : '新会话'}
+                </span>
                 <span className="text-xs text-gray-400">{new Date(session.createdAt).toLocaleTimeString()}</span>
               </div>
             </button>

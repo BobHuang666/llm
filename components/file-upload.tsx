@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FilePlus, Loader2 } from 'lucide-react';
+import { FilePlus } from 'lucide-react';
 
 export const FileUpload = ({
   onUpload,
@@ -29,7 +29,11 @@ export const FileUpload = ({
       setUploadProgress(100);
       setTimeout(() => setUploadProgress(0), 1000);
     } catch (error) {
-      alert(error.message);
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert('An unknown error occurred');
+      }
     } finally {
       e.target.value = '';
     }

@@ -14,5 +14,5 @@ export interface FileContent {
 export interface WorkflowStreamEvent {
   id: number;
   event: 'Message' | 'Error' | 'Done' | 'Interrupt';
-  data: any;
+  data: unknown;
 }

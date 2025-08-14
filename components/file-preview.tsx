@@ -2,6 +2,7 @@
 'use client';
 
 import { FileText, X } from 'lucide-react';
+import Image from 'next/image';
 import { FileContent } from '@/lib/types';
 
 export const FilePreview = ({
@@ -27,12 +28,15 @@ export const FilePreview = ({
       )}
 
       <div className="flex flex-col items-center gap-2">
+
         {isImage ? (
-          <img
+          <Image
             src={content.url}
             alt={content.name}
+            width={128}
+            height={128}
             className="h-32 w-32 object-cover rounded-md"
-            loading="lazy"
+            style={{ objectFit: 'cover', borderRadius: '0.375rem' }}
           />
         ) : isPDF ? (
           <div className="w-32 h-32 bg-gray-800 rounded-md flex items-center justify-center">

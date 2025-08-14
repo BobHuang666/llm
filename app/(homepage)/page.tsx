@@ -26,8 +26,12 @@ export default function HomePage() {
       try {
         await verifyPermissions();
         setPermissionStatus('✅ 权限状态正常');
-      } catch (error: any) {
-        setPermissionStatus(`❌ 权限错误: ${error.message}`);
+      } catch (error: unknown) {
+        let message = '未知错误';
+        if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+          message = (error as { message: string }).message;
+        }
+        setPermissionStatus(`❌ 权限错误: ${message}`);
         console.error('权限验证失败:', error);
       }
     };
@@ -61,16 +65,17 @@ export default function HomePage() {
             };
           } catch (error) {
             console.error('文件处理失败:', file.name, error);
-            throw new Error(`文件 ${file.name} 处理失败: ${error.message}`);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            throw new Error(`文件 ${file.name} 处理失败: ${errorMsg}`);
           }
         })
       );
 
       // 构建工作流参数
-      const parameters = fileDetails.reduce((acc, item) => {
+      const parameters = fileDetails.reduce<Record<string, unknown>>((acc, item) => {
         acc[item.paramKey] = JSON.stringify({ file_id: item.fileId });
         return acc;
-      }, {} as Record<string, any>);
+      }, {});
 
       parameters.text_input = userInput;
 
@@ -116,9 +121,25 @@ export default function HomePage() {
       });
     } catch (error) {
       // 增强错误处理
-      const errorMessage = error.message.includes('file_name')
-        ? '文件处理失败：服务器返回格式异常'
-        : error.message;
+      let errorMessage: string;
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof (error as { message: unknown }).message === 'string' &&
+        ((error as { message: string }).message.includes('file_name'))
+      ) {
+        errorMessage = '文件处理失败：服务器返回格式异常';
+      } else if (
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof (error as { message: unknown }).message === 'string'
+      ) {
+        errorMessage = (error as { message: string }).message;
+      } else {
+        errorMessage = String(error);
+      }
 
       addMessage(activeSessionId, {
         role: 'assistant',
@@ -138,7 +159,8 @@ export default function HomePage() {
       return (
         <ReactMarkdown
           components={{
-            code: ({ inline, className, children }) => {
+            code: (props) => {
+              const { inline, children } = props as { inline?: boolean; children: React.ReactNode };
               const codeString = String(children).replace(/\n$/, '');
               return inline ? (
                 <code className="bg-gray-800 text-yellow-300 p-1 rounded">{codeString}</code>
